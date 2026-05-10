@@ -1,0 +1,56 @@
+import React, { createContext, useState, useEffect, useContext } from "react";
+import { getOrders, getUsers, getProducts } from "../api/api.js";
+
+export const AppContext = createContext();
+
+export const AppProvider = ({ children }) => {
+  const [orders, setOrders] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchAllData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const [ordersRes, usersRes, productsRes] = await Promise.all([
+        getOrders(),
+        getUsers(),
+        getProducts(),
+      ]);
+      setOrders(ordersRes?.data || []);
+      setUsers(usersRes?.data || []);
+      setProducts(productsRes?.data || []);
+    } catch (err) {
+      console.error("Error fetching data:", err);
+      setError("Failed to fetch data from server.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAllData();
+  }, []);
+
+  return (
+    <AppContext.Provider
+      value={{
+        orders, setOrders,
+        users, setUsers,
+        products, setProducts,
+        loading, error,
+        fetchAllData,
+      }}
+    >
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+export const useApp = () => {
+  const ctx = useContext(AppContext);
+  if (!ctx) throw new Error("useApp must be used within AppProvider");
+  return ctx;
+};
