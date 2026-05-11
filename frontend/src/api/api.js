@@ -23,6 +23,11 @@ export const deleteOrder = (id) => api.delete(`/orders/${id}`);
 
 // Users
 export const getUsers = () => api.get(`/users`);
+// Add these to the existing api.js file
+
+export const createProduct = (data) => api.post(`/products`, data);
+export const updateProduct = (id, data) => api.put(`/products/${id}`, data);
+export const deleteProduct = (id) => api.delete(`/products/${id}`);
 
 // Products
 export const getProducts = () => api.get(`/products`);
