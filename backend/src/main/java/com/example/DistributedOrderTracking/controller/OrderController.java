@@ -21,12 +21,17 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.DistributedOrderTracking.Repository.OrderRepository;
 import com.example.DistributedOrderTracking.Repository.ProductRepository;
 import com.example.DistributedOrderTracking.Repository.UserRepository;
+import com.example.DistributedOrderTracking.dto.OrderRequest;
+import com.example.DistributedOrderTracking.dto.OrderResponse;
+import com.example.DistributedOrderTracking.dto.OrderStatusUpdateRequest;
 import com.example.DistributedOrderTracking.exception.ResourceNotFoundException;
 import com.example.DistributedOrderTracking.model.Order;
 import com.example.DistributedOrderTracking.model.OrderStatus;
 import com.example.DistributedOrderTracking.model.Product;
 import com.example.DistributedOrderTracking.model.User;
 import com.example.DistributedOrderTracking.service.OrderService;
+
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/orders")
@@ -37,34 +42,36 @@ public class OrderController {
     @Autowired private UserRepository userRepository;
     @Autowired private ProductRepository productRepository;
 
+
     @GetMapping
-    public ResponseEntity<List<Order>> getOrders(
+    public ResponseEntity<List<OrderResponse>> getOrders(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "id") String sortBy) {
-        return ResponseEntity.ok(orderService.getAllOrders(page, size, sortBy));
+        List<Order> orders = orderService.getAllOrders(page, size, sortBy);
+        List<OrderResponse> response = orders.stream()
+                .map(OrderResponse::fromOrder)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Order> getOrderById(@PathVariable Long id) {
+    public ResponseEntity<OrderResponse> getOrderById(@PathVariable Long id) {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Order not found with id: " + id));
-        return ResponseEntity.ok(order);
+        return ResponseEntity.ok(OrderResponse.fromOrder(order));
     }
 
     @PostMapping
-    public ResponseEntity<Order> createOrder(@RequestBody Map<String, Object> request) {
-        Long userId = Long.valueOf(request.get("userId").toString());
-        List<Integer> productIdInts = (List<Integer>) request.get("productIds");
-        List<Long> productIds = productIdInts.stream()
-                .map(Long::valueOf).collect(Collectors.toList());
+    public ResponseEntity<OrderResponse> createOrder(
+            @Valid @RequestBody OrderRequest request) {
 
-        User user = userRepository.findById(userId)
+        User user = userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "User not found with id: " + userId));
+                        "User not found with id: " + request.getUserId()));
 
-        List<Product> products = productIds.stream()
+        List<Product> products = request.getProductIds().stream()
                 .map(pid -> productRepository.findById(pid)
                         .orElseThrow(() -> new ResourceNotFoundException(
                                 "Product not found with id: " + pid)))
@@ -86,31 +93,31 @@ public class OrderController {
         order.setOrderStatus(status);
 
         Order saved = orderRepository.save(order);
-        return ResponseEntity.status(HttpStatus.CREATED).body(saved);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(OrderResponse.fromOrder(saved));
     }
 
     @PutMapping("/{id}/status")
-    public ResponseEntity<Order> updateOrderStatus(
+    public ResponseEntity<OrderResponse> updateOrderStatus(
             @PathVariable Long id,
-            @RequestBody Map<String, String> request) {
+            @Valid @RequestBody OrderStatusUpdateRequest request) {
+
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Order not found with id: " + id));
 
-        String newStatus = request.get("status");
-
         if (order.getOrderStatus() == null) {
             OrderStatus status = new OrderStatus();
-            status.setStatus(newStatus);
+            status.setStatus(request.getStatus());
             status.setUpdatedAt(LocalDateTime.now());
             status.setOrder(order);
             order.setOrderStatus(status);
         } else {
-            order.getOrderStatus().setStatus(newStatus);
+            order.getOrderStatus().setStatus(request.getStatus());
             order.getOrderStatus().setUpdatedAt(LocalDateTime.now());
         }
 
-        return ResponseEntity.ok(orderRepository.save(order));
+        return ResponseEntity.ok(OrderResponse.fromOrder(orderRepository.save(order)));
     }
 
     @DeleteMapping("/{id}")
@@ -121,4 +128,34 @@ public class OrderController {
         orderRepository.deleteById(id);
         return ResponseEntity.ok(Map.of("message", "Order deleted successfully"));
     }
+
+    // Add these methods inside OrderController.java
+// after the existing deleteOrder method
+
+@GetMapping("/user/{userId}")
+public ResponseEntity<List<OrderResponse>> getOrdersByUser(
+        @PathVariable Long userId) {
+    List<Order> orders = orderService.getOrdersByUser(userId);
+    List<OrderResponse> response = orders.stream()
+            .map(OrderResponse::fromOrder)
+            .collect(Collectors.toList());
+    return ResponseEntity.ok(response);
+}
+
+@GetMapping("/status/{status}")
+public ResponseEntity<List<OrderResponse>> getOrdersByStatus(
+        @PathVariable String status) {
+    List<Order> orders = orderService.getOrdersByStatus(status);
+    List<OrderResponse> response = orders.stream()
+            .map(OrderResponse::fromOrder)
+            .collect(Collectors.toList());
+    return ResponseEntity.ok(response);
+}
+
+@GetMapping("/revenue")
+public ResponseEntity<Map<String, Double>> getTotalRevenue() {
+    return ResponseEntity.ok(
+        Map.of("totalRevenue", orderService.getTotalRevenue())
+    );
+}
 }
