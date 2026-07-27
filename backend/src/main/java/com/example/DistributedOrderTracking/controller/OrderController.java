@@ -29,6 +29,7 @@ import com.example.DistributedOrderTracking.model.Order;
 import com.example.DistributedOrderTracking.model.OrderStatus;
 import com.example.DistributedOrderTracking.model.Product;
 import com.example.DistributedOrderTracking.model.User;
+import com.example.DistributedOrderTracking.service.OrderEventPublisher;
 import com.example.DistributedOrderTracking.service.OrderService;
 
 import jakarta.validation.Valid;
@@ -41,7 +42,7 @@ public class OrderController {
     @Autowired private OrderService orderService;
     @Autowired private UserRepository userRepository;
     @Autowired private ProductRepository productRepository;
-
+    @Autowired private OrderEventPublisher orderEventPublisher;
 
     @GetMapping
     public ResponseEntity<List<OrderResponse>> getOrders(
@@ -93,6 +94,15 @@ public class OrderController {
         order.setOrderStatus(status);
 
         Order saved = orderRepository.save(order);
+
+        // Publish event
+        orderEventPublisher.publishOrderCreated(
+                saved.getId(),
+                saved.getOrderStatus().getStatus(),
+                saved.getTotalPrice(),
+                saved.getUser().getName()
+        );
+
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(OrderResponse.fromOrder(saved));
     }
@@ -117,45 +127,53 @@ public class OrderController {
             order.getOrderStatus().setUpdatedAt(LocalDateTime.now());
         }
 
-        return ResponseEntity.ok(OrderResponse.fromOrder(orderRepository.save(order)));
+        Order updated = orderRepository.save(order);
+
+        // Publish event
+        orderEventPublisher.publishOrderStatusUpdated(
+                updated.getId(),
+                updated.getOrderStatus().getStatus(),
+                updated.getTotalPrice(),
+                updated.getUser().getName()
+        );
+
+        return ResponseEntity.ok(OrderResponse.fromOrder(updated));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Map<String, String>> deleteOrder(@PathVariable Long id) {
         if (!orderRepository.existsById(id)) {
-            throw new ResourceNotFoundException("Order not found with id: " + id);
+            throw new ResourceNotFoundException(
+                    "Order not found with id: " + id);
         }
         orderRepository.deleteById(id);
         return ResponseEntity.ok(Map.of("message", "Order deleted successfully"));
     }
 
-    // Add these methods inside OrderController.java
-// after the existing deleteOrder method
+    @GetMapping("/user/{userId}")
+    public ResponseEntity<List<OrderResponse>> getOrdersByUser(
+            @PathVariable Long userId) {
+        List<Order> orders = orderService.getOrdersByUser(userId);
+        List<OrderResponse> response = orders.stream()
+                .map(OrderResponse::fromOrder)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(response);
+    }
 
-@GetMapping("/user/{userId}")
-public ResponseEntity<List<OrderResponse>> getOrdersByUser(
-        @PathVariable Long userId) {
-    List<Order> orders = orderService.getOrdersByUser(userId);
-    List<OrderResponse> response = orders.stream()
-            .map(OrderResponse::fromOrder)
-            .collect(Collectors.toList());
-    return ResponseEntity.ok(response);
-}
+    @GetMapping("/status/{status}")
+    public ResponseEntity<List<OrderResponse>> getOrdersByStatus(
+            @PathVariable String status) {
+        List<Order> orders = orderService.getOrdersByStatus(status);
+        List<OrderResponse> response = orders.stream()
+                .map(OrderResponse::fromOrder)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(response);
+    }
 
-@GetMapping("/status/{status}")
-public ResponseEntity<List<OrderResponse>> getOrdersByStatus(
-        @PathVariable String status) {
-    List<Order> orders = orderService.getOrdersByStatus(status);
-    List<OrderResponse> response = orders.stream()
-            .map(OrderResponse::fromOrder)
-            .collect(Collectors.toList());
-    return ResponseEntity.ok(response);
-}
-
-@GetMapping("/revenue")
-public ResponseEntity<Map<String, Double>> getTotalRevenue() {
-    return ResponseEntity.ok(
-        Map.of("totalRevenue", orderService.getTotalRevenue())
-    );
-}
+    @GetMapping("/revenue")
+    public ResponseEntity<Map<String, Double>> getTotalRevenue() {
+        return ResponseEntity.ok(
+                Map.of("totalRevenue", orderService.getTotalRevenue())
+        );
+    }
 }
