@@ -25,21 +25,24 @@ public class OrderEventConsumer {
         logger.info("Timestamp   : {}", event.getTimestamp());
         logger.info("------------------------------------------");
 
-        // In future: send email, update analytics, notify frontend via WebSocket
         handleEvent(event);
     }
 
     private void handleEvent(OrderEvent event) {
-        switch(event.getEventType()) {
-            case "ORDER_CREATED":
-                logger.info("Processing new order #{}", event.getOrderId());
-                break;
-            case "ORDER_STATUS_UPDATED":
-                logger.info("Order #{} status changed to {}",
-                        event.getOrderId(), event.getStatus());
-                break;
-            default:
-                logger.warn("Unknown event type: {}", event.getEventType());
+        if (event.getEventType() == null) {
+            logger.warn("Event type is null for order #{}", event.getOrderId());
+            return;
+        }
+
+        if("ORDER_CREATED".equals(event.getEventType())) {
+            logger.info("Processing new order #{}", event.getOrderId());
+
+        } else if ("ORDER_STATUS_UPDATED".equals(event.getEventType())) {
+            logger.info("Order #{} status changed to {}",
+                    event.getOrderId(), event.getStatus());
+
+        } else {
+            logger.warn("Unknown event type: {}", event.getEventType());
         }
     }
 }
